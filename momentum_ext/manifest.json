@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Momentum Internal",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Custom internal Momentum-style dashboard for Firefox with Pomodoro Focus Mode and Daily Stats.",
   "browser_specific_settings": {
     "gecko": {

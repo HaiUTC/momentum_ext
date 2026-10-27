@@ -2153,6 +2153,16 @@ class FocusManager {
 
   async render() {
     const state = await storageService.getFocusState();
+
+    // Scrub the legacy auto-inserted break text out of the stored state
+    // (older versions wrote "☕ Rest for Xm - Recharge your energy" into
+    // currentTask, where it stuck permanently). Treat it as no task:
+    // the input then shows the user's own text or the placeholder.
+    if (state.currentTask && /^☕ Rest for \d+m - Recharge your energy$/.test(state.currentTask)) {
+      state.currentTask = "";
+      storageService.saveFocusState({ currentTask: "" }).catch(() => {});
+    }
+
     const settings = (typeof window !== "undefined" && window.momentumDB)
       ? await window.momentumDB.getSettings()
       : await storageService.getSettings();
@@ -2345,14 +2355,15 @@ class FocusManager {
       }
     }
 
-    // 7. Task input text
+    // 7. Task input text: always the user's own task, on BOTH tabs.
+    // The break tab used to force a "☕ Rest for Xm - Recharge your
+    // energy" text in here; startFocus() then harvested that value into
+    // state.currentTask, which made the auto text stick permanently on
+    // the focus tab and impossible to delete or replace. With no user
+    // task the value stays empty and the input shows its placeholder
+    // ("I will focus on...").
     if (this.fsTaskInput && document.activeElement !== this.fsTaskInput) {
-      if (isBreakTab) {
-        const breakMins = settings && settings.breakDuration ? settings.breakDuration : 5;
-        this.fsTaskInput.value = `☕ Rest for ${breakMins}m - Recharge your energy`;
-      } else {
-        this.fsTaskInput.value = state.currentTask || "";
-      }
+      this.fsTaskInput.value = state.currentTask || "";
     }
 
     // 8. Mini Popover mode badge
