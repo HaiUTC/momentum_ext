@@ -60,6 +60,8 @@ extApi.alarms.onAlarm.addListener(async (alarm) => {
       breakIsRunning: false,
       breakRemainingSeconds: breakMins * 60,
       breakUnlocked: false,
+      breakAnnounceUntil: null,
+      breakEndChimePlayed: false,
       continuousFocusSeconds: 0,
       lastContinuousBase: 0,
       currentTab: "focus"
@@ -229,7 +231,11 @@ extApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const state = await storageService.getFocusState();
         const settings = await storageService.getSettings();
         const breakDuration = (settings && settings.breakDuration) ? settings.breakDuration : 5;
-        const breakTargetTimestamp = Date.now() + breakDuration * 60 * 1000;
+        // Prefer the page's target: it already includes the 5s
+        // start-of-break chime, so the alarm must not fire early.
+        const breakTargetTimestamp = (typeof message.breakTargetTimestamp === "number" && message.breakTargetTimestamp > Date.now())
+          ? message.breakTargetTimestamp
+          : Date.now() + breakDuration * 60 * 1000;
 
         await extApi.alarms.clear(BREAK_ALARM_NAME);
         await extApi.alarms.create(BREAK_ALARM_NAME, { when: breakTargetTimestamp });
@@ -252,9 +258,12 @@ extApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const newState = await storageService.saveFocusState({
           currentTab: "break",
+          breakUnlocked: true,
           breakIsRunning: true,
           breakRemainingSeconds: breakDuration * 60,
           breakTargetTimestamp: breakTargetTimestamp,
+          breakAnnounceUntil: (typeof message.breakAnnounceUntil === "number") ? message.breakAnnounceUntil : null,
+          breakEndChimePlayed: false,
           isRunning: isFocusRunning,
           targetTimestamp: focusTarget,
           sessionStartTime: sessionStart

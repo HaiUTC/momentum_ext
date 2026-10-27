@@ -157,6 +157,33 @@ class ChimePlayer {
     }
   }
 
+  /**
+   * Repeat the dual-tone strike so the notification stays audible for
+   * roughly totalMs and then stops on its own (each strike decays
+   * naturally; the last strike is scheduled to end at ~totalMs).
+   * Used for the 5s break-start announcement and the 5s warning
+   * before the break ends.
+   */
+  playChimeSequence(totalMs = 5000) {
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+
+      const totalSec = Math.max(0.5, totalMs / 1000);
+      const stepSec = 1.4;   // spacing between strikes
+      const decaySec = 2.2;  // longest partial decay in strike()
+      const strikeCount = Math.max(1, Math.floor((totalSec - decaySec) / stepSec) + 1);
+
+      for (let i = 0; i < strikeCount; i++) {
+        const start = ctx.currentTime + i * stepSec;
+        this.strike(ctx, start, 880, 0.35);
+        this.strike(ctx, start + 0.28, 1174.66, 0.40);
+      }
+    } catch (err) {
+      console.warn("[ChimePlayer] Play chime sequence warning:", err);
+    }
+  }
+
   strike(ctx, startTime, freq, masterGain) {
     const partials = [
       { ratio: 1.0, gain: 0.60, decay: 2.2 },
@@ -1274,7 +1301,8 @@ class FocusManager {
           ? cachedSettings.breakDuration * 60
           : (cachedState.breakRemainingSeconds || defaultBreakMins * 60);
         if (cachedState.breakIsRunning && cachedState.breakTargetTimestamp) {
-          initSeconds = Math.max(0, Math.round((cachedState.breakTargetTimestamp - Date.now()) / 1000));
+          // Cap at the break duration (first 5s are the start chime).
+          initSeconds = Math.min(defaultBreakMins * 60, Math.max(0, Math.round((cachedState.breakTargetTimestamp - Date.now()) / 1000)));
         }
       } else if (cachedState.isRunning && cachedState.targetTimestamp) {
         initSeconds = Math.max(0, Math.round((cachedState.targetTimestamp - Date.now()) / 1000));
@@ -1373,9 +1401,9 @@ class FocusManager {
     if (this.extApi && this.extApi.runtime && this.extApi.runtime.onMessage) {
       this.extApi.runtime.onMessage.addListener((msg) => {
         if (msg && msg.type === "BREAK_COMPLETED_ALARM") {
-          if (this.chimePlayer) {
-            this.chimePlayer.playChime();
-          }
+          // No chime here: the page already chimed at break start and
+          // during the break's final 5 seconds. This path only needs to
+          // resume music and re-sync the UI.
           if (this.soundsManager) {
             this.soundsManager.play();
           }
@@ -1821,6 +1849,20 @@ class FocusManager {
   }
 
   async startBreak() {
+    const state = await storageService.getFocusState();
+
+    // Idempotent: a break that is already running must never be restarted.
+    // The render() tick used to re-enter startBreak() every cycle because
+    // breakUnlocked was only flipped on the tick's private copy of the
+    // state (never persisted) while the continuous-focus streak kept
+    // growing past the unlock interval — each re-entry pushed
+    // breakTargetTimestamp forward, so the break countdown appeared
+    // frozen at its full duration and never finished.
+    if (state.breakIsRunning && state.currentTab === "break") {
+      await this.render();
+      return;
+    }
+
     // 1. Turn off music immediately
     if (this.soundsManager) {
       this.soundsManager.pause();
@@ -1829,18 +1871,22 @@ class FocusManager {
       this.soundscapePlayer.stop();
     }
 
-    // 2. Play clock chime sound
+    // 2. Notification chime for 5 seconds. The break countdown only
+    // starts when the chime stops: breakTargetTimestamp therefore points
+    // 5s (announcement) + breakDuration into the future, and the display
+    // layer caps the shown remaining time at the break duration.
     if (this.chimePlayer) {
-      this.chimePlayer.playChime();
+      this.chimePlayer.playChimeSequence(5000);
     }
 
-    const state = await storageService.getFocusState();
     const settings = (typeof window !== "undefined" && window.momentumDB)
       ? await window.momentumDB.getSettings()
       : await storageService.getSettings();
     const breakDuration = (settings && settings.breakDuration) ? settings.breakDuration : 5;
-    const breakTargetTimestamp = Date.now() + breakDuration * 60 * 1000;
+    const breakAnnounceUntil = Date.now() + 5000;
+    const breakTargetTimestamp = breakAnnounceUntil + breakDuration * 60 * 1000;
 
+    // The focus timer keeps running while the break runs.
     let focusTarget = state.targetTimestamp;
     let isFocusRunning = state.isRunning;
     let sessionStart = state.sessionStartTime;
@@ -1858,9 +1904,12 @@ class FocusManager {
     const breakState = {
       ...state,
       currentTab: "break",
+      breakUnlocked: true,
       breakIsRunning: true,
       breakRemainingSeconds: breakDuration * 60,
       breakTargetTimestamp: breakTargetTimestamp,
+      breakAnnounceUntil: breakAnnounceUntil,
+      breakEndChimePlayed: false,
       isRunning: isFocusRunning,
       targetTimestamp: focusTarget,
       sessionStartTime: sessionStart
@@ -1871,16 +1920,18 @@ class FocusManager {
     } catch (e) {}
 
     await storageService.saveFocusState(breakState);
-    this.sendExtMessage({ type: "START_BREAK" }).catch(() => {});
+    this.sendExtMessage({
+      type: "START_BREAK",
+      breakTargetTimestamp: breakTargetTimestamp,
+      breakAnnounceUntil: breakAnnounceUntil
+    }).catch(() => {});
     await this.render();
   }
 
   async finishBreak() {
-    // 1. Play exact same clock chime sound
-    if (this.chimePlayer) {
-      this.chimePlayer.playChime();
-    }
-
+    // No chime here anymore: the warning chime already plays during the
+    // final 5 seconds of the break (see the render() tick), so the break
+    // ends right as that chime fades out.
     const state = await storageService.getFocusState();
     const settings = (typeof window !== "undefined" && window.momentumDB)
       ? await window.momentumDB.getSettings()
@@ -1892,6 +1943,8 @@ class FocusManager {
       breakIsRunning: false,
       breakRemainingSeconds: breakSecs,
       breakUnlocked: false,
+      breakAnnounceUntil: null,
+      breakEndChimePlayed: false,
       continuousFocusSeconds: 0,
       lastContinuousBase: 0
     };
@@ -1964,6 +2017,8 @@ class FocusManager {
     let breakRemaining = state.breakRemainingSeconds || breakSecs;
     if (state.breakIsRunning && state.breakTargetTimestamp) {
       breakRemaining = Math.max(0, Math.round((state.breakTargetTimestamp - now) / 1000));
+      // Cap at the break duration (first 5s are the start chime).
+      breakRemaining = Math.min(breakRemaining, breakSecs);
     }
 
     const totalSecsToday = Math.max(0, targetTotalSecs - remaining);
@@ -2131,6 +2186,10 @@ class FocusManager {
       breakSeconds = breakSecs;
     } else if (state.breakIsRunning && state.breakTargetTimestamp) {
       breakSeconds = Math.max(0, Math.round((state.breakTargetTimestamp - Date.now()) / 1000));
+      // During the 5s start-of-break chime the raw remaining time is up
+      // to 5s above the break duration; the countdown visually starts
+      // (at the full duration) only once the chime stops.
+      breakSeconds = Math.min(breakSeconds, breakSecs);
     }
 
     let tickCount = 0;
@@ -2149,7 +2208,10 @@ class FocusManager {
           const elapsedStreak = Math.max(0, Math.round((now - (state.sessionStartTime || now)) / 1000));
           const continuous = (state.lastContinuousBase || 0) + elapsedStreak;
           state.continuousFocusSeconds = continuous;
-          if (continuous >= intervalSecs && !state.breakUnlocked) {
+          // Never auto-start a break while one is already running: the
+          // focus timer keeps running during the break, so the streak
+          // stays above the unlock interval for the whole break.
+          if (continuous >= intervalSecs && !state.breakUnlocked && !state.breakIsRunning && state.currentTab !== "break") {
             state.breakUnlocked = true;
             this.startBreak();
             return;
@@ -2158,7 +2220,17 @@ class FocusManager {
 
         if (state.breakIsRunning && state.breakTargetTimestamp) {
           breakSeconds = Math.max(0, Math.round((state.breakTargetTimestamp - now) / 1000));
+          // Cap at the break duration: the first 5s are the start chime.
+          breakSeconds = Math.min(breakSeconds, breakSecs);
           state.breakRemainingSeconds = breakSeconds;
+          // Warning chime for the final 5 seconds of the break (once).
+          if (breakSeconds <= 5 && breakSeconds > 0 && !state.breakEndChimePlayed) {
+            state.breakEndChimePlayed = true;
+            if (this.chimePlayer) {
+              this.chimePlayer.playChimeSequence(5000);
+            }
+            storageService.saveFocusState({ breakEndChimePlayed: true }).catch(() => {});
+          }
           if (breakSeconds <= 0) {
             this.finishBreak();
             return;

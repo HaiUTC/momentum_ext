@@ -542,6 +542,8 @@ class MomentumDB {
       breakRemainingSeconds: defaultBreakMins * 60,
       breakIsRunning: false,
       breakTargetTimestamp: null,
+      breakAnnounceUntil: null,
+      breakEndChimePlayed: false,
       currentTab: "focus"
     };
   }
@@ -564,6 +566,8 @@ class MomentumDB {
     state.breakRemainingSeconds = defaultBreakMins * 60;
     state.breakIsRunning = false;
     state.breakTargetTimestamp = null;
+    state.breakAnnounceUntil = null;
+    state.breakEndChimePlayed = false;
     state.currentTab = "focus";
     return state;
   }

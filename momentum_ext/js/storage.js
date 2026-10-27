@@ -39,6 +39,8 @@ const DEFAULT_FOCUS_STATE = {
   breakRemainingSeconds: 5 * 60,// 5 minutes = 300 seconds
   breakIsRunning: false,
   breakTargetTimestamp: null,
+  breakAnnounceUntil: null,     // ms ts when the 5s start-of-break chime ends
+  breakEndChimePlayed: false,   // true once the final-5s warning chime played
   currentTab: "focus"           // "focus" | "break"
 };
 
@@ -298,6 +300,8 @@ class StorageService {
       state.breakRemainingSeconds = defaultBreakMins * 60;
       state.breakIsRunning = false;
       state.breakTargetTimestamp = null;
+      state.breakAnnounceUntil = null;
+      state.breakEndChimePlayed = false;
       state.currentTab = "focus";
       await this.set({ focus_state: state });
     }
