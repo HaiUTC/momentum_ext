@@ -263,7 +263,20 @@ class SoundsManager {
       const url = (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL)
         ? chrome.runtime.getURL("assets/sound/index.json")
         : "assets/sound/index.json";
-      const resp = await fetch(url);
+      // Bounded fetch: a stalled request must not stall readyPromise —
+      // FocusManager.init() and play() both wait on it.
+      let resp;
+      if (typeof AbortController !== "undefined") {
+        const controller = new AbortController();
+        const fetchTimer = setTimeout(() => controller.abort(), 3000);
+        try {
+          resp = await fetch(url, { signal: controller.signal });
+        } finally {
+          clearTimeout(fetchTimer);
+        }
+      } else {
+        resp = await fetch(url);
+      }
       const data = await resp.json();
       if (data && data.sound) {
         this.library.youtube = (data.sound.youtube || []).map(t => ({ ...t, type: "youtube" }));
@@ -443,10 +456,25 @@ class SoundsManager {
           }
 
           if (isPaused !== null) {
-            this.isPlaying = !isPaused;
+            const nextIsPlaying = !isPaused;
+            // The Spotify embed posts state/progress messages repeatedly
+            // while a track plays. If the play/pause state did not actually
+            // change, do NOTHING — the previous code called renderGrid()
+            // here, rebuilding every card (innerHTML = "" + recreate) on
+            // every message: thumbnails flickered, scroll reset, and the
+            // playing/equalizer CSS animation restarted from zero each time.
+            if (nextIsPlaying === this.isPlaying) return;
+            this.isPlaying = nextIsPlaying;
             this.focusManager.updateSoundscapeUi(this.isPlaying);
             if (this.popover && !this.popover.classList.contains("hidden")) {
-              this.renderGrid();
+              // Cheap in-place update: toggling two classes preserves the
+              // existing DOM nodes, images, scroll position and any running
+              // CSS animation. Only build the grid if it was never rendered.
+              if (this.gridContainer && this.gridContainer.children && this.gridContainer.children.length > 0) {
+                this.updatePlaybackStateUi();
+              } else {
+                this.renderGrid();
+              }
             }
           }
         } catch (err) {}
@@ -702,6 +730,28 @@ class SoundsManager {
   async renderGrid() {
     if (!this.gridContainer) return;
 
+    // Coalesce overlapping renders: renderGrid is async (it awaits
+    // IndexedDB), so two calls in quick succession used to interleave —
+    // both cleared the grid and appended duplicate cards / flickered.
+    // Now a call made while one is in flight is folded into a single
+    // follow-up render.
+    if (this._renderGridInFlight) {
+      this._renderGridQueued = true;
+      return;
+    }
+    this._renderGridInFlight = true;
+    try {
+      await this._renderGridOnce();
+    } finally {
+      this._renderGridInFlight = false;
+      if (this._renderGridQueued) {
+        this._renderGridQueued = false;
+        this.renderGrid();
+      }
+    }
+  }
+
+  async _renderGridOnce() {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
         this.customSounds = await window.momentumDB.getCustomSounds();
@@ -928,7 +978,10 @@ class SoundsManager {
   async play() {
     if (this.readyPromise) {
       try {
-        await this.readyPromise;
+        await Promise.race([
+          this.readyPromise,
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
       } catch (e) {}
     }
     if (this.isPlaying) return;
@@ -1238,7 +1291,13 @@ class FocusManager {
     }
 
     if (this.soundsManager.readyPromise) {
-      await this.soundsManager.readyPromise;
+      // Never let a slow/hung sounds library load block the first
+      // render: the popover re-renders itself once loading finishes,
+      // and play() re-awaits the same promise (also with a ceiling).
+      await Promise.race([
+        this.soundsManager.readyPromise,
+        new Promise((resolve) => setTimeout(resolve, 2500))
+      ]);
     }
 
     await this.render();
