@@ -68,6 +68,20 @@ class MomentumDB {
         this.db = event.target.result;
         this.isReady = true;
 
+        // If another context (e.g. an extension update) needs a version
+        // change, release this connection instead of blocking it forever.
+        this.db.onversionchange = () => {
+          try { this.db.close(); } catch (e) {}
+          this.db = null;
+          this.isReady = false;
+          this.readyPromise = null;
+        };
+        this.db.onclose = () => {
+          this.db = null;
+          this.isReady = false;
+          this.readyPromise = null;
+        };
+
         // Populate in-memory cache
         try {
           await this.loadCache();
@@ -75,6 +89,13 @@ class MomentumDB {
           console.warn("[MomentumDB] Initial cache load warning:", e);
         }
         resolve(this.db);
+      };
+
+      request.onblocked = () => {
+        // Do NOT reject: the open may still succeed once the other
+        // connection closes. Callers are protected by storage timeouts
+        // in storage.js, so a blocked open can no longer freeze the UI.
+        console.warn("[MomentumDB] IndexedDB open is blocked by another connection (tab). Waiting for it to close...");
       };
 
       request.onerror = (event) => {
@@ -114,7 +135,16 @@ class MomentumDB {
   // ==========================================
 
   async getStoreItem(storeName, key) {
-    await this.ensureReady();
+    // ensureReady() stays INSIDE the try: if IndexedDB failed to open,
+    // getters must settle with null (callers then fall back to the
+    // browser.storage / localStorage layers) instead of rejecting or
+    // hanging the whole init chain.
+    try {
+      await this.ensureReady();
+    } catch (err) {
+      console.warn("[MomentumDB] getStoreItem: DB not ready:", err);
+      return null;
+    }
     return new Promise((resolve) => {
       try {
         const tx = this.db.transaction(storeName, "readonly");
@@ -129,7 +159,12 @@ class MomentumDB {
   }
 
   async getAllStoreItems(storeName) {
-    await this.ensureReady();
+    try {
+      await this.ensureReady();
+    } catch (err) {
+      console.warn("[MomentumDB] getAllStoreItems: DB not ready:", err);
+      return [];
+    }
     return new Promise((resolve) => {
       try {
         const tx = this.db.transaction(storeName, "readonly");
@@ -477,10 +512,24 @@ class MomentumDB {
   // 4. FOCUS STATE & POMODORO TIMER API
   // ==========================================
 
+  /**
+   * Single source of truth for "today": LOCAL date (YYYY-MM-DD).
+   * Previously this class used toISOString() (UTC), which flips the day
+   * at 07:00 in UTC+7 while storage.js used the local date (00:00) — the
+   * two layers disagreed for 7 hours every day and kept "rolling over"
+   * each other's state.
+   */
+  getLocalDateString(dateObj = new Date()) {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const day = String(dateObj.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
   getDefaultFocusState(defaultFocusMins = 120, defaultBreakMins = 5) {
     return {
       key: "timer_state",
-      date: new Date().toISOString().split("T")[0],
+      date: this.getLocalDateString(),
       mode: "focus",
       isRunning: false,
       targetTimestamp: null,
@@ -497,6 +546,46 @@ class MomentumDB {
     };
   }
 
+  /**
+   * Apply the daily rollover to a state object IN PLACE and return it.
+   * Pure data transform: performs no storage I/O and never calls
+   * getFocusState()/saveFocusState().
+   */
+  _applyFocusRollover(state, todayStr, defaultFocusMins, defaultBreakMins) {
+    state.date = todayStr;
+    state.isRunning = false;
+    state.targetTimestamp = null;
+    state.sessionStartTime = null;
+    state.durationMinutes = defaultFocusMins;
+    state.remainingSeconds = defaultFocusMins * 60;
+    state.continuousFocusSeconds = 0;
+    state.lastContinuousBase = 0;
+    state.breakUnlocked = false;
+    state.breakRemainingSeconds = defaultBreakMins * 60;
+    state.breakIsRunning = false;
+    state.breakTargetTimestamp = null;
+    state.currentTab = "focus";
+    return state;
+  }
+
+  /**
+   * Low-level write of a COMPLETE focus state. Updates the in-memory
+   * cache BEFORE persisting and writes directly to IndexedDB.
+   *
+   * This is the only write path used by getFocusState()'s rollover.
+   * The previous code called the public saveFocusState() there, which
+   * itself starts with `await this.getFocusState()` — while the stored
+   * date was still the old day, that recursed get -> save -> get -> ...
+   * forever and the promise never settled, freezing every button whose
+   * handler awaits the focus state.
+   */
+  async _writeFocusState(state) {
+    const updated = { ...state, key: "timer_state" };
+    this.cache.focusState = updated;
+    await this.putStoreItem("focus_state", updated);
+    return updated;
+  }
+
   async getFocusState() {
     let settings = null;
     try {
@@ -504,24 +593,19 @@ class MomentumDB {
     } catch (e) {}
     const defaultFocusMins = (settings && settings.focusDuration) ? settings.focusDuration : 120;
     const defaultBreakMins = (settings && settings.breakDuration) ? settings.breakDuration : 5;
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = this.getLocalDateString();
 
     if (this.cache.focusState) {
       const state = { ...this.cache.focusState };
-      // Daily rollover check
+      // Daily rollover check — write through the low-level path only.
       if (state.date && state.date !== todayStr) {
-        state.date = todayStr;
-        state.isRunning = false;
-        state.targetTimestamp = null;
-        state.durationMinutes = defaultFocusMins;
-        state.remainingSeconds = defaultFocusMins * 60;
-        state.continuousFocusSeconds = 0;
-        state.breakUnlocked = false;
-        state.breakRemainingSeconds = defaultBreakMins * 60;
-        state.breakIsRunning = false;
-        state.breakTargetTimestamp = null;
-        state.currentTab = "focus";
-        await this.saveFocusState(state);
+        this._applyFocusRollover(state, todayStr, defaultFocusMins, defaultBreakMins);
+        this.cache.focusState = state;
+        try {
+          await this._writeFocusState(state);
+        } catch (e) {
+          console.warn("[MomentumDB] Rollover persist warning:", e);
+        }
       }
       return state;
     }
@@ -529,20 +613,15 @@ class MomentumDB {
     const defaults = this.getDefaultFocusState(defaultFocusMins, defaultBreakMins);
     const state = { ...defaults, ...(stored || {}) };
 
-    // Daily rollover check
+    // Daily rollover check — write through the low-level path only.
     if (state.date && state.date !== todayStr) {
-      state.date = todayStr;
-      state.isRunning = false;
-      state.targetTimestamp = null;
-      state.durationMinutes = defaultFocusMins;
-      state.remainingSeconds = defaultFocusMins * 60;
-      state.continuousFocusSeconds = 0;
-      state.breakUnlocked = false;
-      state.breakRemainingSeconds = defaultBreakMins * 60;
-      state.breakIsRunning = false;
-      state.breakTargetTimestamp = null;
-      state.currentTab = "focus";
-      await this.saveFocusState(state);
+      this._applyFocusRollover(state, todayStr, defaultFocusMins, defaultBreakMins);
+      this.cache.focusState = state;
+      try {
+        await this._writeFocusState(state);
+      } catch (e) {
+        console.warn("[MomentumDB] Rollover persist warning:", e);
+      }
     }
     this.cache.focusState = state;
     return state;
@@ -551,9 +630,7 @@ class MomentumDB {
   async saveFocusState(state) {
     const current = await this.getFocusState();
     const updated = { ...current, ...state, key: "timer_state" };
-    await this.putStoreItem("focus_state", updated);
-    this.cache.focusState = updated;
-    return updated;
+    return this._writeFocusState(updated);
   }
 
   // ==========================================
@@ -572,7 +649,7 @@ class MomentumDB {
   }
 
   async recordSession(session) {
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = this.getLocalDateString();
     const current = await this.getDayStats(todayStr);
 
     current.sessions.push(session);

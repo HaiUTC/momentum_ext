@@ -263,7 +263,20 @@ class SoundsManager {
       const url = (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL)
         ? chrome.runtime.getURL("assets/sound/index.json")
         : "assets/sound/index.json";
-      const resp = await fetch(url);
+      // Bounded fetch: a stalled request must not stall readyPromise —
+      // FocusManager.init() and play() both wait on it.
+      let resp;
+      if (typeof AbortController !== "undefined") {
+        const controller = new AbortController();
+        const fetchTimer = setTimeout(() => controller.abort(), 3000);
+        try {
+          resp = await fetch(url, { signal: controller.signal });
+        } finally {
+          clearTimeout(fetchTimer);
+        }
+      } else {
+        resp = await fetch(url);
+      }
       const data = await resp.json();
       if (data && data.sound) {
         this.library.youtube = (data.sound.youtube || []).map(t => ({ ...t, type: "youtube" }));
@@ -928,7 +941,10 @@ class SoundsManager {
   async play() {
     if (this.readyPromise) {
       try {
-        await this.readyPromise;
+        await Promise.race([
+          this.readyPromise,
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
       } catch (e) {}
     }
     if (this.isPlaying) return;
@@ -1238,7 +1254,13 @@ class FocusManager {
     }
 
     if (this.soundsManager.readyPromise) {
-      await this.soundsManager.readyPromise;
+      // Never let a slow/hung sounds library load block the first
+      // render: the popover re-renders itself once loading finishes,
+      // and play() re-awaits the same promise (also with a ceiling).
+      await Promise.race([
+        this.soundsManager.readyPromise,
+        new Promise((resolve) => setTimeout(resolve, 2500))
+      ]);
     }
 
     await this.render();

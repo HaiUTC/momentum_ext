@@ -42,6 +42,32 @@ const DEFAULT_FOCUS_STATE = {
   currentTab: "focus"           // "focus" | "break"
 };
 
+/**
+ * Hard ceiling for any single storage operation on the init / click path.
+ * A storage promise that never settles (blocked IndexedDB, a browser.*
+ * call whose callback never fires, a dead background context...) must
+ * degrade to the fallback layers below — never freeze the UI.
+ */
+const STORAGE_TIMEOUT_MS = 2000;
+
+function withStorageTimeout(promise, label, ms = STORAGE_TIMEOUT_MS) {
+  let timer = null;
+  const tracked = Promise.resolve(promise);
+  // If the timeout wins the race, a late rejection of the underlying
+  // operation must not surface as an unhandled rejection.
+  tracked.catch(() => {});
+  return Promise.race([
+    tracked,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`[storage] Timed out after ${ms}ms: ${label || "operation"}`));
+      }, ms);
+    })
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 class StorageService {
   constructor() {
     this.api = (typeof browser !== "undefined" && browser.storage) 
@@ -66,9 +92,31 @@ class StorageService {
       }
       return {};
     }
-    return new Promise((resolve) => {
-      this.api.get(keys, (result) => resolve(result || {}));
-    });
+    // browser.* (Firefox) and chrome.* in MV3 both return a Promise when
+    // no callback is passed — await that promise directly. The previous
+    // implementation passed a Chrome-style callback to the promise-based
+    // browser.* API and discarded the returned promise: if the callback
+    // is not invoked (not part of the browser.* contract), the wrapping
+    // Promise never settles and every `await` on storage hangs forever.
+    try {
+      const maybePromise = this.api.get(keys);
+      if (maybePromise && typeof maybePromise.then === "function") {
+        const result = await withStorageTimeout(maybePromise, "storage.get");
+        return result || {};
+      }
+    } catch (e) {
+      console.warn("[storage] storage.get failed, falling back:", e);
+    }
+    // Callback-style fallback (legacy chrome.* implementations).
+    // Never reject: callers rely on get() settling with {} so they can
+    // fall back to defaults / sync cache instead of dying on the spot.
+    return withStorageTimeout(new Promise((resolve) => {
+      try {
+        this.api.get(keys, (result) => resolve(result || {}));
+      } catch (e) {
+        resolve({});
+      }
+    }), "storage.get (callback)").catch(() => ({}));
   }
 
   async set(items) {
@@ -85,9 +133,27 @@ class StorageService {
     if (!this.api) {
       return;
     }
-    return new Promise((resolve) => {
-      this.api.set(items, () => resolve());
-    });
+    // Same fix as get(): await the promise returned by browser.* / MV3
+    // chrome.* directly, with a timeout, instead of relying on a
+    // callback that the promise-based API does not guarantee.
+    try {
+      const maybePromise = this.api.set(items);
+      if (maybePromise && typeof maybePromise.then === "function") {
+        await withStorageTimeout(maybePromise, "storage.set");
+        return;
+      }
+    } catch (e) {
+      console.warn("[storage] storage.set failed:", e);
+      return;
+    }
+    // Callback-style fallback (legacy chrome.* implementations)
+    await withStorageTimeout(new Promise((resolve) => {
+      try {
+        this.api.set(items, () => resolve());
+      } catch (e) {
+        resolve();
+      }
+    }), "storage.set (callback)").catch(() => {});
   }
 
   // --- Synchronous Fast-Path Readers (Instant 0ms retrieval) ---
@@ -131,9 +197,11 @@ class StorageService {
   async getSettings() {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        const dbSettings = await window.momentumDB.getSettings();
+        const dbSettings = await withStorageTimeout(window.momentumDB.getSettings(), "momentumDB.getSettings");
         if (dbSettings) return dbSettings;
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[storage] getSettings: IndexedDB path failed/timed out, falling back:", e);
+      }
     }
     const data = await this.get(["settings"]);
     const settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
@@ -149,8 +217,10 @@ class StorageService {
   async saveSettings(settings) {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.updateSettings(settings);
-      } catch (e) {}
+        await withStorageTimeout(window.momentumDB.updateSettings(settings), "momentumDB.updateSettings");
+      } catch (e) {
+        console.warn("[storage] saveSettings: IndexedDB path failed/timed out:", e);
+      }
     }
     const current = await this.getSettings();
     const updated = { ...current, ...settings };
@@ -191,7 +261,7 @@ class StorageService {
   async getFocusState() {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        const dbState = await window.momentumDB.getFocusState();
+        const dbState = await withStorageTimeout(window.momentumDB.getFocusState(), "momentumDB.getFocusState");
         if (dbState) {
           // Keep synchronous cache updated
           try {
@@ -201,7 +271,9 @@ class StorageService {
           } catch (e) {}
           return dbState;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[storage] getFocusState: IndexedDB path failed/timed out, falling back:", e);
+      }
     }
 
     const data = await this.get(["focus_state"]);
@@ -242,8 +314,10 @@ class StorageService {
   async saveFocusState(state) {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.saveFocusState(state);
-      } catch (e) {}
+        await withStorageTimeout(window.momentumDB.saveFocusState(state), "momentumDB.saveFocusState");
+      } catch (e) {
+        console.warn("[storage] saveFocusState: IndexedDB path failed/timed out:", e);
+      }
     }
     const current = await this.getFocusState();
     const updated = { ...current, ...state };
@@ -262,7 +336,7 @@ class StorageService {
   async getAllStats() {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        const statsList = await window.momentumDB.getAllStoreItems("focus_stats");
+        const statsList = await withStorageTimeout(window.momentumDB.getAllStoreItems("focus_stats"), "momentumDB.getAllStoreItems(focus_stats)");
         if (Array.isArray(statsList) && statsList.length > 0) {
           const statsMap = {};
           statsList.forEach((s) => {
@@ -297,7 +371,7 @@ class StorageService {
     // Save into MomentumDB store focus_stats
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.putStoreItem("focus_stats", allStats[todayStr]);
+        await withStorageTimeout(window.momentumDB.putStoreItem("focus_stats", allStats[todayStr]), "momentumDB.putStoreItem(focus_stats)");
       } catch (e) {}
     }
 
@@ -341,7 +415,7 @@ class StorageService {
     // Save into MomentumDB store focus_stats
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.putStoreItem("focus_stats", allStats[dateStr]);
+        await withStorageTimeout(window.momentumDB.putStoreItem("focus_stats", allStats[dateStr]), "momentumDB.putStoreItem(focus_stats)");
       } catch (e) {}
     }
 
@@ -358,7 +432,7 @@ class StorageService {
   async getStatsByDate(dateStr) {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        const item = await window.momentumDB.getStoreItem("focus_stats", dateStr);
+        const item = await withStorageTimeout(window.momentumDB.getStoreItem("focus_stats", dateStr), "momentumDB.getStoreItem(focus_stats)");
         if (item) return item;
       } catch (e) {}
     }
@@ -447,8 +521,10 @@ class StorageService {
   async getCustomSounds() {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        return await window.momentumDB.getCustomSounds();
-      } catch (e) {}
+        return await withStorageTimeout(window.momentumDB.getCustomSounds(), "momentumDB.getCustomSounds");
+      } catch (e) {
+        console.warn("[storage] getCustomSounds: IndexedDB path failed/timed out, falling back:", e);
+      }
     }
     const res = await this.get("custom_sounds");
     return Array.isArray(res.custom_sounds) ? res.custom_sounds : [];
@@ -457,8 +533,8 @@ class StorageService {
   async saveCustomSound(soundItem) {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.putStoreItem("custom_sounds", soundItem);
-        return await window.momentumDB.getCustomSounds();
+        await withStorageTimeout(window.momentumDB.putStoreItem("custom_sounds", soundItem), "momentumDB.putStoreItem(custom_sounds)");
+        return await withStorageTimeout(window.momentumDB.getCustomSounds(), "momentumDB.getCustomSounds");
       } catch (e) {}
     }
     const sounds = await this.getCustomSounds();
@@ -470,8 +546,8 @@ class StorageService {
   async deleteCustomSound(id) {
     if (typeof window !== "undefined" && window.momentumDB) {
       try {
-        await window.momentumDB.deleteCustomSound(id);
-        return await window.momentumDB.getCustomSounds();
+        await withStorageTimeout(window.momentumDB.deleteCustomSound(id), "momentumDB.deleteCustomSound");
+        return await withStorageTimeout(window.momentumDB.getCustomSounds(), "momentumDB.getCustomSounds");
       } catch (e) {}
     }
     const sounds = await this.getCustomSounds();
