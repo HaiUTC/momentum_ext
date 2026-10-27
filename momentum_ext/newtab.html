@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>New Tab</title>
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/focus.css">
+  <link rel="stylesheet" href="css/stats.css">
+  <link rel="stylesheet" href="css/settings.css">
+  <link rel="stylesheet" href="css/modal.css">
+  <script src="js/prepaint.js"></script>
+</head>
+<body>
+  <!-- Full-screen Dynamic Wallpaper with Dark Vignette Overlay -->
+  <div id="background-layer" class="background-layer"></div>
+  <div class="vignette-overlay"></div>
+
+  <!-- Cinematic Focus Transition Overlay -->
+  <div id="focus-transition-overlay" class="focus-transition-overlay hidden">
+    <div id="fto-phrase" class="fto-phrase"></div>
+  </div>
+
+  <!-- Main App Viewport -->
+  <div class="momentum-app">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="top-left">
+        <!-- Top-Left Focus Trigger (Pure white icon, white text, no border, no hover effect) -->
+        <div class="top-focus-container">
+          <button id="btn-toggle-focus" class="top-focus-btn">
+            <svg class="top-focus-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="22" height="22" stroke="#ffffff">
+              <path xmlns="http://www.w3.org/2000/svg" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7.616 8.923h-.77m7.693 0h-.77M9.155 6.258l-.385-.666m3.846 6.662-.384-.666m-3.077 0-.385.666m3.846-6.662-.384.666M11.256 22H5.721c0-.606.088-2.227.442-3.863.442-2.044-1.548-2.045-2.653-5.225C2.405 9.73 2.405 2.232 10.805 2.005s7.528 6.746 7.97 7.655 2.558 4.042 2.558 4.468c0 .643-1.025.804-2.337 1.123 0 .152-.074 1.324-.675 2.886-.75 1.948-3.749 1.59-5.075 1.59-1.061 0 0 2.273-1.99 2.273"></path>
+            </svg>
+            <span class="top-focus-label">Focus</span>
+          </button>
+
+          <!-- Focus Dropdown / Popover -->
+          <div id="focus-popover" class="focus-popover hidden">
+            <div class="focus-popover-header">
+              <span class="focus-popover-title">POMODORO FOCUS</span>
+              <button id="btn-open-stats" class="focus-popover-stats-btn">
+                <svg data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="16" height="16">
+                  <path xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.875 13.063v9.375m-3.75-6v6m-3.75-2.625v2.625M10.454 10.1l-.325-.447M6.726 7.18 6.2 7.01m2.63-1.357V5.1m-1.626 5 .325-.447m3.929-2.644-.526.171M4.656 18.5h4.388c1.577 0 .736-2.364 1.577-2.364 1.051 0 3.429.295 4.023-1.313.476-1.29.535-2.258.535-2.383 1.04-.263 2.321-.397 2.321-.928 0-.35-2.146-2.938-2.496-3.688s.34-6.507-6.318-6.32c-6.658.188-6.658 6.378-5.782 9.004.876 2.627 2.453 2.627 2.103 4.315-.28 1.35-.35 3.177-.35 3.677"></path>
+                </svg>
+                <span>Stats</span>
+              </button>
+            </div>
+
+            <div class="focus-timer-widget">
+              <div class="focus-timer-header">
+                <span id="focus-mode-badge" class="mode-badge mode-idle">Ready</span>
+                <span id="focus-timer-display" class="focus-countdown">25:00</span>
+              </div>
+              <div class="focus-timer-actions">
+                <button id="focus-btn-start" class="btn-focus primary">Start Focus</button>
+                <button id="focus-btn-pause" class="btn-focus warning hidden">Pause</button>
+                <button id="focus-btn-resume" class="btn-focus primary hidden">Resume</button>
+                <button id="focus-btn-reset" class="btn-focus secondary hidden">Reset</button>
+                <button id="focus-btn-skip" class="btn-focus secondary hidden">Skip</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fullscreen Focus Mode Top-Left: ONLY music player button! -->
+        <div id="focus-fs-top-left" class="focus-fs-top-left">
+          <button id="focus-soundscape-btn" class="focus-soundscape-pill" title="Toggle Focus Flow Soundscape">
+            <img class="soundscape-album-cover" src="assets/focus-flow-cover.png" alt="Focus Flow" width="56" height="56">
+            <div class="soundscape-play-disc">
+              <svg id="soundscape-icon-play" class="soundscape-icon soundscape-icon-play" width="18" height="18" viewBox="0 0 24 24" fill="#ffffff">
+                <polygon points="6 4 20 12 6 20"></polygon>
+              </svg>
+              <svg id="soundscape-icon-pause" class="soundscape-icon soundscape-icon-pause hidden" width="18" height="18" viewBox="0 0 24 24" fill="#ffffff">
+                <rect x="6" y="4" width="4" height="16" rx="1.5"></rect>
+                <rect x="14" y="4" width="4" height="16" rx="1.5"></rect>
+              </svg>
+            </div>
+          </button>
+        </div>
+
+        <!-- Sounds Music Picker Popover -->
+        <div id="sounds-popover" class="sounds-popover hidden">
+          <!-- Top Arrow pointing to Soundscape trigger button -->
+          <div class="sounds-popover-arrow"></div>
+
+          <!-- Sliding Viewport Container -->
+          <div id="sounds-slider-viewport" class="sounds-slider-viewport">
+            <div id="sounds-slider-track" class="sounds-slider-track slide-view-grid">
+
+              <!-- VIEW 1: SOUNDS GRID -->
+              <div id="sounds-view-grid" class="sounds-view sounds-view-grid">
+                <!-- Header -->
+                <div class="sounds-header">
+                  <div class="sounds-title-row">
+                    <svg class="sounds-music-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="22" height="22">
+                      <path xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0m12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0"></path>
+                    </svg>
+                    <span class="sounds-title">Sounds</span>
+                  </div>
+                  <button id="btn-sound-add-open" class="sounds-add-btn" title="Add music">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Toolbar Filters -->
+                <div class="sounds-toolbar">
+                  <div class="sounds-filter-tabs">
+                    <button id="sound-tab-spotify" class="sound-tab-btn active" data-tab="spotify">Spotify</button>
+                    <button id="sound-tab-youtube" class="sound-tab-btn" data-tab="youtube">Youtube</button>
+                  </div>
+                  <button id="btn-sound-now-playing" class="sound-now-playing-btn" title="Now Playing">
+                    <div id="sound-now-playing-bg" class="sound-now-playing-bg"></div>
+                    <div class="sound-now-playing-content">
+                      <span>Now Playing</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M13 5l7 7-7 7"/>
+                      </svg>
+                    </div>
+                  </button>
+                </div>
+
+                <!-- Grid of Songs -->
+                <div id="sounds-grid" class="sounds-grid"></div>
+              </div>
+
+              <!-- VIEW 2: ADD MUSIC -->
+              <div id="sounds-view-add" class="sounds-view sounds-view-add">
+                <div class="sounds-header">
+                  <div class="sounds-title-row">
+                    <button id="btn-sound-add-back" class="sounds-back-btn" title="Back to Sounds">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                    <svg class="sounds-music-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="22" height="22">
+                      <path xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0m12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0"></path>
+                    </svg>
+                    <span class="sounds-title">Add music</span>
+                  </div>
+                </div>
+                <div class="sounds-add-body">
+                  <input type="text" id="input-sound-url" class="sounds-input-link" placeholder="Paste Spotify or Youtube link" autocomplete="off" />
+                  <div id="sound-add-status" class="sounds-status-msg"></div>
+                </div>
+              </div>
+
+              <!-- VIEW 3: NOW PLAYING PLAYER -->
+              <div id="sounds-view-player" class="sounds-view sounds-view-player">
+                <div class="sounds-header player-header">
+                  <div class="sounds-title-row">
+                    <button id="btn-sound-player-back" class="sounds-back-btn" title="Back to Sounds">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                    <img id="now-playing-header-thumb" class="now-playing-header-thumb" src="assets/focus-flow-cover.png" alt="" />
+                    <span id="now-playing-header-title" class="sounds-title player-title">Focus Flow</span>
+                  </div>
+                  <div id="now-playing-header-actions" class="now-playing-header-actions hidden">
+                    <button id="btn-player-more" class="sound-card-more-btn" title="Options">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="5" cy="12" r="2"/>
+                        <circle cx="12" cy="12" r="2"/>
+                        <circle cx="19" cy="12" r="2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="sounds-player-body">
+                  <div id="sounds-embed-container" class="sounds-embed-container">
+                    <!-- Dynamic Iframe Embed -->
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Small Popover for Delete confirmation on custom tracks -->
+          <div id="sound-delete-popover" class="sound-delete-popover hidden">
+            <button id="btn-sound-delete-confirm" class="sound-delete-item">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+              </svg>
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top-Center: Focusing Status with Stop Button (Matching Momentum Focusing pill) -->
+      <div class="top-center">
+        <div id="focus-top-status" class="focus-top-status" title="Click to exit Focus and return home">
+          <div class="focus-top-status-inner">
+            <svg class="focus-top-brain-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <mask id="focus-top-brain-mask">
+                  <rect width="24" height="24" fill="#ffffff" />
+                  <path d="M7.616 8.923h-.77m7.693 0h-.77M9.155 6.258l-.385-.666m3.846 6.662-.384-.666m-3.077 0-.385.666m3.846-6.662-.384.666" stroke="#000000" stroke-width="1.8" stroke-linecap="round" />
+                </mask>
+              </defs>
+              <path d="M11.256 22H5.721c0-.606.088-2.227.442-3.863.442-2.044-1.548-2.045-2.653-5.225C2.405 9.73 2.405 2.232 10.805 2.005s7.528 6.746 7.97 7.655 2.558 4.042 2.558 4.468c0 .643-1.025.804-2.337 1.123 0 .152-.074 1.324-.675 2.886-.75 1.948-3.749 1.59-5.075 1.59-1.061 0 0 2.273-1.99 2.273z" fill="#ffffff" mask="url(#focus-top-brain-mask)" filter="drop-shadow(0 1px 4px rgba(0,0,0,0.4))" />
+            </svg>
+            <span id="focus-top-status-label" class="focus-top-status-label">Focusing</span>
+            <button id="focus-btn-stop" class="focus-btn-stop" aria-label="Stop & Exit Focus">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="#ffffff">
+                <rect x="3" y="3" width="18" height="18" rx="3.5"></rect>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="top-right">
+        <!-- Top-Right Daily Focused Time & Popover (Matching Momentum UI) -->
+        <div class="top-stats-widget-container">
+          <!-- Trigger Button -->
+          <button id="btn-top-focus-stats" class="top-stats-trigger"  aria-label="Focused Today">
+            <div class="top-stats-time-row">
+              <svg class="top-stats-ring" width="24" height="24" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8.5" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="2.6" />
+                <circle cx="12" cy="3.5" r="1.6" fill="#ffffff" />
+              </svg>
+              <span id="top-focused-today-time" class="top-stats-time-text">0m</span>
+            </div>
+            <div class="top-stats-sublabel">Focused Today</div>
+          </button>
+
+          <!-- Popover Card (matching Image 2 & Image 3) -->
+          <div id="top-stats-popover" class="top-stats-popover hidden">
+            <!-- Upward Pointer Arrow -->
+            <div class="top-stats-arrow"></div>
+
+            <div class="tsp-slider-viewport" id="tsp-slider-viewport">
+              <div id="tsp-slider-track" class="tsp-slider-track">
+                <!-- VIEW 1: STATS OVERVIEW (7 days chart) -->
+                <div class="tsp-view tsp-view-stats" id="tsp-view-stats">
+                  <!-- Popover Header -->
+                  <div class="tsp-header">
+                    <div class="tsp-title-wrap">
+                      <svg class="tsp-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="22" height="22">
+                        <path xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.875 13.063v9.375m-3.75-6v6m-3.75-2.625v2.625M10.454 10.1l-.325-.447M6.726 7.18 6.2 7.01m2.63-1.357V5.1m-1.626 5 .325-.447m3.929-2.644-.526.171M4.656 18.5h4.388c1.577 0 .736-2.364 1.577-2.364 1.051 0 3.429.295 4.023-1.313.476-1.29.535-2.258.535-2.383 1.04-.263 2.321-.397 2.321-.928 0-.35-2.146-2.938-2.496-3.688s.34-6.507-6.318-6.32c-6.658.188-6.658 6.378-5.782 9.004.876 2.627 2.453 2.627 2.103 4.315-.28 1.35-.35 3.177-.35 3.677"></path>
+                      </svg>
+                      <span class="tsp-title">Focus Stats</span>
+                    </div>
+                  </div>
+
+                  <!-- Dropdown Filter: Last 7 days vs Last 30 days -->
+                  <div class="tsp-period-row">
+                    <button id="tsp-period-toggle" class="tsp-period-btn">
+                      <span id="tsp-period-label">Last 7 days</span>
+                      <svg class="tsp-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+
+                    <div id="tsp-period-dropdown" class="tsp-period-dropdown hidden">
+                      <button class="tsp-period-option active" data-period="7">
+                        <span>Last 7 days</span>
+                        <svg class="tsp-check-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </button>
+                      <button class="tsp-period-option" data-period="30">
+                        <span>Last 30 days</span>
+                        <svg class="tsp-check-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Inner Dark Card with Chart -->
+                  <div class="tsp-chart-card">
+                    <div id="tsp-card-focused-label" class="tsp-card-title">0m focused</div>
+                    
+                    <div class="tsp-chart-wrapper" id="tsp-chart-wrapper">
+                      <!-- Background Grid Lines & Y-Labels (10h down to 0h baseline) -->
+                      <div class="tsp-grid-lines">
+                        <div class="tsp-grid-row goal-row">
+                          <span class="tsp-grid-label">10h</span>
+                          <div class="tsp-goal-line-wrap">
+                            <span class="tsp-goal-badge">Goal</span>
+                            <div class="tsp-goal-line"></div>
+                          </div>
+                        </div>
+                        <div class="tsp-grid-row">
+                          <span class="tsp-grid-label">7.5h</span>
+                          <div class="tsp-grid-dashed-line"></div>
+                        </div>
+                        <div class="tsp-grid-row">
+                          <span class="tsp-grid-label">5h</span>
+                          <div class="tsp-grid-dashed-line"></div>
+                        </div>
+                        <div class="tsp-grid-row">
+                          <span class="tsp-grid-label">2.5h</span>
+                          <div class="tsp-grid-dashed-line"></div>
+                        </div>
+                        <div class="tsp-grid-row baseline-row">
+                          <span class="tsp-grid-label"></span>
+                          <div class="tsp-grid-baseline-spacer"></div>
+                        </div>
+                      </div>
+
+                      <!-- Scroll arrow buttons for 30-day mode -->
+                      <button id="tsp-chart-nav-left" class="tsp-chart-nav-btn tsp-nav-left hidden" aria-label="Scroll left">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                      </button>
+                      <button id="tsp-chart-nav-right" class="tsp-chart-nav-btn tsp-nav-right hidden" aria-label="Scroll right">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </button>
+
+                      <!-- Scrollable Columns Viewport -->
+                      <div id="tsp-columns-viewport" class="tsp-columns-viewport">
+                        <div id="tsp-days-columns" class="tsp-days-columns mode-7-days">
+                          <!-- Dynamically populated via js/stats.js -->
+                        </div>
+                      </div>
+
+                      <!-- Hover Focus Minutes Badge (matching uploaded image) -->
+                      <div id="tsp-chart-tooltip" class="tsp-tooltip-badge hidden">0m</div>
+                    </div>
+                  </div>
+
+                  <!-- History Action Button at Bottom -->
+                  <div class="tsp-footer">
+                    <button id="tsp-btn-history" class="tsp-history-btn">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                        <path d="M12 7v5l4 2"/>
+                      </svg>
+                      <span>History</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- VIEW 2: FOCUS HISTORY (matching uploaded image!) -->
+                <div class="tsp-view tsp-view-history" id="tsp-view-history">
+                  <!-- History Header with Back Arrow -->
+                  <div class="tsh-header">
+                    <button id="tsh-btn-back" class="tsh-back-btn" >
+                      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                      </svg>
+                    </button>
+                    <h3 class="tsh-title">Focus History</h3>
+                  </div>
+
+                  <!-- Month Selector Card -->
+                  <div class="tsh-month-card">
+                    <button id="tsh-prev-month" class="tsh-month-nav-btn">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
+                    </button>
+                    <div class="tsh-month-info">
+                      <span id="tsh-month-label" class="tsh-month-label">Oct 2026</span>
+                      <span id="tsh-month-focused" class="tsh-month-val">0m focused</span>
+                    </div>
+                    <button id="tsh-next-month" class="tsh-month-nav-btn" >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <!-- Daily History Rows List -->
+                  <div id="tsh-days-list" class="tsh-days-list">
+                    <!-- Populated via js/stats.js -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Center Content: Normal Clock vs Fullscreen Focus Mode -->
+    <main class="center-content">
+      <!-- DASHBOARD CLOCK VIEW -->
+      <div id="dashboard-clock-view" class="dashboard-clock-view">
+        <!-- Time Display (Bigger size) -->
+        <div id="clock-time" class="clock-time">00:00</div>
+
+        <!-- Personalized Greeting -->
+        <div class="greeting-container">
+          <span id="greeting-text">Good day, </span>
+          <div class="name-wrapper" id="name-wrapper">
+            <span id="greeting-name">friend.</span>
+            <!-- Three-dot button shown on hover -->
+            <button id="name-three-dots-btn" class="name-three-dots-btn" aria-label="Name options">
+              <svg data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" fill="none" viewBox="0 0 24 24" width="20" height="20">
+                <circle xmlns="http://www.w3.org/2000/svg" cx="12" cy="12" r="1"></circle>
+                <circle xmlns="http://www.w3.org/2000/svg" cx="19" cy="12" r="1"></circle>
+                <circle xmlns="http://www.w3.org/2000/svg" cx="5" cy="12" r="1"></circle>
+              </svg>
+            </button>
+
+            <!-- Popover with "Edit your name" button (Matching Focus Stats Popover style) -->
+            <div id="name-popover" class="name-popover hidden">
+              <div class="name-popover-arrow"></div>
+              <button id="btn-edit-name-action" class="name-popover-item">
+                <svg class="edit-name-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-currentColor" fill="none" viewBox="0 0 24 24" width="16" height="16">
+                  <path xmlns="http://www.w3.org/2000/svg" d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4"></path>
+                </svg>
+                <span>Edit your name</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FULLSCREEN FOCUS MODE VIEW -->
+      <div id="focus-fullscreen-view" class="focus-fullscreen-view">
+        <!-- Big Circular Countdown Arc & Timer Display (Size 680) -->
+        <div class="focus-fs-timer-wrapper">
+          <svg class="focus-fs-arc-svg" width="680" height="680" viewBox="0 0 680 680">
+            <!-- Background Track Arc (276 degrees, cut above play button) -->
+            <path class="focus-fs-arc-track" d="M 134.0 561.0 A 308 308 0 1 1 546.0 561.0" fill="none" stroke="rgba(255, 255, 255, 0.3)" stroke-width="10" stroke-linecap="round" />
+
+            <!-- Active Progress Arc -->
+            <path id="focus-fs-arc-fill" class="focus-fs-arc-fill" d="M 134.0 561.0 A 308 308 0 1 1 546.0 561.0" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-dasharray="1484" stroke-dashoffset="1484" opacity="0" />
+          </svg>
+
+          <!-- Inner Content: Tabs, Big Time, Task Input, Play/Pause -->
+          <div class="focus-fs-content">
+            <!-- FOCUS / BREAK Tab Switcher (Inside the Circle) -->
+            <div class="focus-fs-tabs">
+              <button id="focus-tab-focus" class="focus-fs-tab active">FOCUS</button>
+              <button id="focus-tab-break" class="focus-fs-tab disabled" title="Focus continuously to unlock Break">BREAK</button>
+            </div>
+
+            <!-- Big Time Display (e.g. 10:00:00, 9:55:20) -->
+            <div id="focus-fs-time" class="focus-fs-time" title="Click to choose duration">10:00:00</div>
+
+            <!-- Focus Task / Intention Input -->
+            <div class="focus-fs-task-wrap">
+              <input type="text" id="focus-fs-task-input" class="focus-fs-task-input" placeholder="I will focus on..." maxlength="80" autocomplete="off" />
+            </div>
+
+            <!-- Center Circular Pause / Resume Button -->
+            <button id="focus-fs-play-btn" class="focus-fs-play-btn" aria-label="Pause or Resume">
+              <!-- Pause Icon -->
+              <svg id="focus-icon-pause" class="focus-fs-action-icon hidden" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path xmlns="http://www.w3.org/2000/svg" fill-rule="evenodd" d="M5.757 3.037a2.24 2.24 0 0 0-1.427.926 1.8 1.8 0 0 0-.275.63c-.046.191-.047.345-.047 7.407s.001 7.216.047 7.407c.191.796.874 1.411 1.732 1.559.181.031.428.035 1.576.028 1.323-.009 1.366-.011 1.551-.063.767-.217 1.342-.783 1.525-1.501.049-.188.049-.241.049-7.43s0-7.242-.049-7.43c-.183-.718-.758-1.283-1.525-1.501-.186-.052-.222-.054-1.582-.06-1.115-.005-1.428.001-1.575.028m9.544-.011a2.24 2.24 0 0 0-1.355.779 2.5 2.5 0 0 0-.402.791c-.042.161-.044.456-.044 7.404s.002 7.243.044 7.404c.099.378.374.822.657 1.06.295.248.635.415 1.003.491.195.04.343.044 1.548.044s1.353-.004 1.548-.044c.804-.166 1.45-.769 1.646-1.535.045-.175.046-.36.046-7.42s-.001-7.245-.046-7.42c-.186-.726-.759-1.291-1.536-1.513-.177-.051-.224-.053-1.574-.058-.766-.002-1.456.005-1.535.017"></path></svg>
+              <!-- Play Icon -->
+              <svg id="focus-icon-play" class="focus-fs-action-icon" style="margin-left: 3px;" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 64 64"><path xmlns="http://www.w3.org/2000/svg" d="M20 16.138c0-3.373 3.807-5.324 6.525-3.344l21.777 15.862c2.264 1.649 2.264 5.04 0 6.688L26.525 51.206c-2.718 1.98-6.525.03-6.525-3.344z"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Duration Picker Popover (shown when clicking the timer) -->
+        <div id="focus-duration-picker" class="focus-duration-picker hidden">
+          <div class="focus-duration-title">Set Duration</div>
+          <div class="focus-duration-presets">
+            <button class="focus-duration-btn" data-mins="600">10h (Default)</button>
+            <button class="focus-duration-btn" data-mins="90">90m</button>
+            <button class="focus-duration-btn" data-mins="50">50m</button>
+            <button class="focus-duration-btn" data-mins="25">25m</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Bar: Settings, Daily Quote & Checklist -->
+    <footer class="bottom-bar">
+      <div class="bottom-left">
+        <div class="settings-widget-container">
+          <button id="btn-open-settings" class="icon-btn" aria-label="Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+
+          <!-- Settings Popover (2-Column Light Theme matching Momentum) -->
+          <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
+            <!-- Downward Arrow pointing to Gear Icon -->
+            <div class="settings-popover-arrow"></div>
+
+            <div class="settings-popover-inner">
+              <!-- Column 1: Sidebar (No icons per user request) -->
+              <aside class="settings-sidebar">
+                <nav class="settings-nav-list">
+                  <button class="settings-nav-item active" data-tab="focus">Focus Mode</button>
+                  <button class="settings-nav-item" data-tab="photos">Photos</button>
+                </nav>
+              </aside>
+
+              <!-- Column 2: Main Content Area -->
+              <main class="settings-main">
+                <!-- 1. Focus Mode Settings Pane -->
+                <div id="settings-panel-focus" class="settings-panel">
+                  <div class="settings-pane-header">
+                    <h2 class="settings-pane-title">Focus Mode</h2>
+                    <p class="settings-pane-desc">Eliminate distractions with timers and sounds</p>
+                  </div>
+
+                  <div class="settings-focus-content">
+                    <!-- Group 1: Focus Duration (1h - 12h, step 30m) -->
+                    <div class="settings-slider-card">
+                      <!-- 1. Focus Duration -->
+                      <div class="setting-slider-main">
+                        <div class="settings-slider-header">
+                          <div class="settings-slider-title-group">
+                            <span class="settings-slider-label">Focus Duration</span>
+                            <span class="settings-slider-help">Total target focus time for your day</span>
+                          </div>
+                          <span id="badge-focus-duration" class="settings-slider-badge">2h 00m</span>
+                        </div>
+                        <div class="settings-slider-wrapper">
+                          <input 
+                            type="range" 
+                            id="slider-focus-duration" 
+                            class="settings-range-slider" 
+                            min="60" 
+                            max="720" 
+                            step="30" 
+                            value="120"
+                            aria-label="Focus Duration"
+                          >
+                          <div class="settings-slider-scale">
+                            <span>1h</span>
+                            <span>3h</span>
+                            <span>6h</span>
+                            <span>9h</span>
+                            <span>12h</span>
+                          </div>
+                        </div>
+                      </div> 
+
+                      <!-- 2. Focus Interval (Time before break) -->
+                      <div class="setting-slider-main">
+                        <div class="settings-slider-header">
+                          <div class="settings-slider-title-group">
+                            <span class="settings-slider-label">Focus Interval</span>
+                            <span class="settings-slider-help">How long to focus before taking a break</span>
+                          </div>
+                          <span id="badge-focus-interval" class="settings-slider-badge">1h 00m</span>
+                        </div>
+                        <div class="settings-slider-wrapper">
+                          <input 
+                            type="range" 
+                            id="slider-focus-interval" 
+                            class="settings-range-slider" 
+                            min="30" 
+                            max="120" 
+                            step="5" 
+                            value="60"
+                            aria-label="Focus Interval"
+                          >
+                          <div class="settings-slider-scale">
+                            <span>30m</span>
+                            <span>45m</span>
+                            <span>1h</span>
+                            <span>1h 30m</span>
+                            <span>2h</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- 3. Break Duration -->
+                      <div class="setting-slider-main">
+                        <div class="settings-slider-header">
+                          <div class="settings-slider-title-group">
+                            <span class="settings-slider-label">Break Duration</span>
+                            <span class="settings-slider-help">Rest time between focus sessions</span>
+                          </div>
+                          <span id="badge-break-duration" class="settings-slider-badge">5m</span>
+                        </div>
+                        <div class="settings-slider-wrapper">
+                          <input 
+                            type="range" 
+                            id="slider-break-duration" 
+                            class="settings-range-slider" 
+                            min="5" 
+                            max="30" 
+                            step="1" 
+                            value="5"
+                            aria-label="Break Duration"
+                          >
+                          <div class="settings-slider-scale">
+                            <span>5m</span>
+                            <span>10m</span>
+                            <span>15m</span>
+                            <span>20m</span>
+                            <span>30m</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. Photos Settings Pane -->
+                <div id="settings-panel-photos" class="settings-panel hidden">
+                  <div class="settings-pane-header">
+                    <h2 class="settings-pane-title">Photos</h2>
+                    <p class="settings-pane-desc">See a new inspiring photo each day</p>
+                  </div>
+
+                  <div class="settings-photos-content">
+                    <!-- Actions Bar: Sub-tabs & + Add Photo -->
+                    <div class="settings-photos-actions">
+                      <div class="settings-photos-tabs">
+                        <button class="settings-photo-subtab active" data-subtab="history">History</button>
+                        <button class="settings-photo-subtab" data-subtab="my-photos">My Photos</button>
+                      </div>
+                      <div class="settings-photos-btn-wrap">
+                        <input type="file" id="input-local-photo" accept="image/*" style="display: none;">
+                        <button id="btn-add-photo" class="settings-btn-add-photo" type="button">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </svg>
+                          <span>Add Photo</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- 4-Column Photo Grid -->
+                    <div class="settings-photos-grid-wrap">
+                      <div id="settings-photos-grid" class="settings-photos-grid">
+                        <!-- Populated dynamically via js/settings.js with 4 columns -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+        <div id="wallpaper-info" class="wallpaper-info">
+          <a id="wallpaper-location" class="wallpaper-location" href="#" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+      </div>
+
+      <div class="bottom-center">
+        <!-- Normal Dashboard Quote -->
+        <div id="dashboard-quote-container" class="quote-container">
+          <div id="quote-text" class="quote-text">"Simplicity is the soul of efficiency."</div>
+          <div id="quote-author" class="quote-author">Austin Freeman</div>
+        </div>
+      </div>
+
+      <div class="bottom-right">
+        <!-- Spacer -->
+      </div>
+    </footer>
+  </div>
+
+  <!-- Focus Stats Modal (Daily & Monthly Overview) -->
+  <div id="stats-modal" class="modal-overlay hidden">
+    <div class="modal-card stats-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-title-row">
+            <svg class="stats-modal-title-icon" data-v-260cd68c="" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="22" height="22">
+              <path xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21.875 13.063v9.375m-3.75-6v6m-3.75-2.625v2.625M10.454 10.1l-.325-.447M6.726 7.18 6.2 7.01m2.63-1.357V5.1m-1.626 5 .325-.447m3.929-2.644-.526.171M4.656 18.5h4.388c1.577 0 .736-2.364 1.577-2.364 1.051 0 3.429.295 4.023-1.313.476-1.29.535-2.258.535-2.383 1.04-.263 2.321-.397 2.321-.928 0-.35-2.146-2.938-2.496-3.688s.34-6.507-6.318-6.32c-6.658.188-6.658 6.378-5.782 9.004.876 2.627 2.453 2.627 2.103 4.315-.28 1.35-.35 3.177-.35 3.677"></path>
+            </svg>
+            <h2 class="modal-title">Focus Stats & History</h2>
+          </div>
+          <span class="modal-subtitle">Detailed statistics by day and month</span>
+        </div>
+        <button id="btn-close-stats" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body stats-modal-body">
+        <!-- Monthly Navigation & Summary -->
+        <div class="stats-month-nav">
+          <button id="stats-prev-month" class="btn-subtle">&larr;</button>
+          <span id="stats-month-title" class="stats-month-label">October 2026</span>
+          <button id="stats-next-month" class="btn-subtle">&rarr;</button>
+        </div>
+
+        <div class="stats-metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">Total Time</span>
+            <span id="stats-month-mins" class="metric-val">0h 0m</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Completed Sessions</span>
+            <span id="stats-month-sessions" class="metric-val">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Active Days</span>
+            <span id="stats-month-active-days" class="metric-val">0 days</span>
+          </div>
+        </div>
+
+        <!-- Monthly Visual Bar Chart -->
+        <div class="stats-chart-wrapper">
+          <div class="stats-chart-title">Monthly Focus Distribution (Click on a day for details)</div>
+          <div id="stats-chart-bars" class="stats-chart-bars">
+            <!-- Rendered via js/stats.js -->
+          </div>
+        </div>
+
+        <!-- Daily Detail Section -->
+        <div class="stats-daily-section">
+          <div class="stats-daily-header">
+            <h3 id="stats-day-heading" class="stats-day-heading">Today</h3>
+            <span id="stats-day-summary" class="stats-day-summary">0m • 0 sessions</span>
+          </div>
+
+          <div id="stats-timeline-list" class="stats-timeline-list">
+            <!-- Rendered via js/stats.js -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/storage.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/wallpaper.js"></script>
+  <script src="js/clock.js"></script>
+  <script src="js/focus.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
